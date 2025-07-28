@@ -1,0 +1,11 @@
+{
+    "python.analysis.extraPaths": ["${workspaceFolder}"],
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingImports": "none",
+        "reportOptionalMemberAccess": "none"
+    }
+}
