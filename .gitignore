@@ -1,0 +1,13 @@
+# Project specific
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Model files
+*.h5
+*.hdf5
+*.pth
