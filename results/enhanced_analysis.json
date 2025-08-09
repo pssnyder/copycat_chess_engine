@@ -1,0 +1,52 @@
+{
+  "game_decisiveness": {},
+  "time_control_distribution": {},
+  "opening_stats": {
+    "Unknown": {
+      "games": 1,
+      "wins": 1
+    }
+  },
+  "phase_transitions": {
+    "avg_opening_duration": 0,
+    "avg_middlegame_duration": 0
+  },
+  "piece_stats": {},
+  "metric_correlations": {
+    "decisiveness": {
+      "decisiveness": NaN,
+      "total_moves": NaN,
+      "material_imbalance": NaN,
+      "avg_move_quality": NaN,
+      "avg_time_per_move": NaN
+    },
+    "total_moves": {
+      "decisiveness": NaN,
+      "total_moves": NaN,
+      "material_imbalance": NaN,
+      "avg_move_quality": NaN,
+      "avg_time_per_move": NaN
+    },
+    "material_imbalance": {
+      "decisiveness": NaN,
+      "total_moves": NaN,
+      "material_imbalance": NaN,
+      "avg_move_quality": NaN,
+      "avg_time_per_move": NaN
+    },
+    "avg_move_quality": {
+      "decisiveness": NaN,
+      "total_moves": NaN,
+      "material_imbalance": NaN,
+      "avg_move_quality": NaN,
+      "avg_time_per_move": NaN
+    },
+    "avg_time_per_move": {
+      "decisiveness": NaN,
+      "total_moves": NaN,
+      "material_imbalance": NaN,
+      "avg_move_quality": NaN,
+      "avg_time_per_move": NaN
+    }
+  }
+}

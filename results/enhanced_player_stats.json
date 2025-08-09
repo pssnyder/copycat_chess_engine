@@ -1,0 +1,26 @@
+{
+  "total_games": 0,
+  "wins": 0,
+  "losses": 0,
+  "draws": 0,
+  "avg_game_length": 0,
+  "favorite_openings": {
+    "Unknown": 1
+  },
+  "decisiveness_distribution": {},
+  "time_control_distribution": {},
+  "performance_by_color": {
+    "white": {
+      "games": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0
+    },
+    "black": {
+      "games": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0
+    }
+  }
+}
