@@ -1,140 +1,135 @@
 # Copycat Chess Engine
 
-A neural network-based chess engine with evaluation capabilities, combining deep learning and traditional chess evaluation techniques.
+A data-driven chess engine that learns and mimics a player's style from their game history.
 
-## Engine Versions
+## Project Overview
 
-The engine has several versions with different capabilities:
-- **v0.5.31_copycat_enhanced_ai**: Latest version with improved evaluation
-- **v0.5.31_copycat_genetic_ai**: Version using genetic algorithms for move selection
-- **v0.5.30_copycat_eval_ai**: Version focused on evaluation capabilities
+This engine analyzes historical chess games to understand and replicate a player's:
+- Move preferences
+- Piece placement patterns
+- Time management style
+- Opening choices
+- Tactical patterns
 
-## UCI Support
+## Key Features
 
-This engine can now be used with any UCI-compatible chess GUI, such as Arena, Fritz, or Cutechess.
+- **Pattern-Based Play**: Uses frequency analysis and pattern matching instead of traditional engine evaluation
+- **Style Mimicking**: Replicates the target player's characteristic moves and positions
+- **Dynamic Time Management**: Adapts search depth based on remaining time
+- **UCI Compatible**: Works with standard chess GUIs like Arena
+- **Visual Analytics**: Generate insights about playing patterns
 
-### Using with Arena Chess GUI
+## Project Structure
 
-1. Download and install [Arena Chess GUI](http://www.playwitharena.de/)
-2. In Arena, go to Engines > Install New Engine
-3. Navigate to the copycat_chess_engine directory
-4. Select `Copycat_UCI.bat`
-5. Click "OK" to confirm the engine installation
-6. The engine should now be available in Arena's engine list
-
-### Technical Details
-
-The UCI interface implements the following commands:
-- `uci`: Identifies the engine
-- `isready`: Initializes the engine and responds when ready
-- `position [fen/startpos] moves ...`: Sets up the position
-- `go [depth/movetime/wtime/btime/...]`: Starts engine analysis
-- `stop`: Stops analysis (if supported)
-- `quit`: Exits the engine
-
-## Features
-
-- Neural network-based move prediction
-- Sophisticated evaluation engine with multiple factors:
-  - Material evaluation
-  - Positional understanding
-  - King safety
-  - Center control
-  - Development assessment
-  - Hanging piece detection
-- Multiple engine versions (enhanced, genetic, evaluation)
-- Time management for tournament play
-
-## Architecture
-
-The engine combines neural network prediction with classical evaluation:
-1. The neural network suggests candidate moves based on patterns learned from games
-2. The evaluation engine scores each candidate position
-3. The best scoring move is selected
-
-In the genetic algorithm version:
-1. Multiple move sequences are generated
-2. They are evolved over generations using genetic operators
-3. The best performing sequence is selected for the first move
-
-## Development
-
-The engine is in active development with various improvements:
-- Enhanced position evaluation
-- Better search algorithms
-- Material and positional understanding
-- Time management techniques
-
-## Technical Requirements
-
-- Python 3.8+
-- PyTorch
-- python-chess
-- numpy
-
-### Installation
-
-The required dependencies can be installed with pip:
-
-```bash
-# Install all required packages
-pip install -r requirements.txt
-
-# Or install them individually
-pip install torch
-pip install numpy
-pip install python-chess
+```
+copycat_chess_engine/
+├── analysis/                # Analysis tools
+│   ├── game_analyzer.py    # PGN analysis and metadata extraction
+│   └── visualize_results.py # Visualization generators
+├── results/                # Analysis results and visualizations
+│   ├── piece_heatmaps.json
+│   ├── move_patterns.json
+│   ├── position_transitions.json
+│   └── visual_reports/
+├── training_positions/     # Training data
+│   └── games.pgn          # Historical games
+├── engine.py              # Main engine
+├── search.py              # Move search implementation
+└── move_library.json      # Compiled move database
 ```
 
-PyTorch is already installed on most systems. You can verify your installation with:
+## Setup
 
-```bash
-python -c "import torch; print(f'PyTorch version: {torch.__version__}, CUDA available: {torch.cuda.is_available()}')"
-```
+1. Create a Python virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   venv\Scripts\activate     # Windows
+   ```
 
-### Verifying Your Installation
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-You can verify that all required dependencies are correctly installed by running:
+3. Place your PGN file in `training_positions/games.pgn`
 
-```bash
-python check_dependencies.py
-```
+4. Generate move library:
+   ```bash
+   python analysis/game_analyzer.py
+   ```
 
-This script checks:
-- If PyTorch, NumPy, and python-chess are installed
-- Whether CUDA is available for GPU acceleration
-- If model files and vocabulary files are present
+5. Generate visual reports:
+   ```bash
+   python analysis/visualize_results.py
+   ```
 
-### Troubleshooting Import Errors in VS Code
+## Analysis Pipeline
 
-If you see "Import 'torch' could not be resolved" errors in VS Code even though PyTorch is installed:
+1. **Game Analysis**
+   - Parse PGN files
+   - Extract moves, positions, and timing
+   - Calculate frequencies and patterns
+   - Generate metadata
 
-1. Run `test_environment.bat` to diagnose Python environment issues
-2. Try selecting a different Python interpreter in VS Code:
-   - Press `Ctrl+Shift+P` and type "Python: Select Interpreter"
-   - Choose the Python installation where PyTorch is installed
-3. Make sure the VS Code Python and Pylance extensions are up to date
-4. Reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window")
+2. **Data Visualization**
+   - Piece movement heatmaps
+   - Timing distributions
+   - Success rate analysis
+   - Move sequence graphs
 
-### Fixing Terminal Interpreter Issues
+3. **Move Library Generation**
+   - Compile analyzed data
+   - Index positions and patterns
+   - Calculate weights
+   - Optimize for query speed
 
-If your VS Code terminal shows a different Python version than your editor:
+## Using the Engine
 
-1. Run `fix_terminal_interpreter.bat` to update VS Code settings
-2. Close all terminal windows
-3. Reload VS Code (`Ctrl+Shift+P` → "Developer: Reload Window")
-4. Open a new terminal with the correct interpreter:
-   - `Ctrl+Shift+P` → "Python: Create Terminal"
+1. **Arena Chess GUI Setup**
+   - Add as UCI engine
+   - Configure time controls
+   - Set player name to match PGN
 
-Alternatively, use `CopycatUCI_VSCode.bat` which attempts to use the VS Code selected Python interpreter.
+2. **Engine Commands**
+   - `uci`: Initialize UCI mode
+   - `setoption name PlayerName value v7p3r`: Set target player
+   - `go movetime 1000`: Calculate move with 1 second
+   - `go wtime 300000 btime 300000`: Tournament time control
 
-## Tournament Usage
+## Understanding Results
 
-When using in a tournament:
-1. Set appropriate time controls in Arena
-2. The engine will automatically manage its time based on the position complexity
-3. For best performance, use a machine with CUDA-compatible GPU
+The `results/visual_reports/` directory contains:
+- `heatmap_*.png`: Piece movement preferences
+- `timing_distribution.png`: Move timing patterns
+- `move_success_rates.png`: Win rates by move
+- `phase_distribution.png`: Piece usage by game phase
+- `move_sequences.png`: Common move sequences
 
-## Acknowledgements
+## Development Notes
 
-The engine's neural network was trained on a dataset of high-quality chess games, including games from strong engines and human masters.
+1. **Data Collection**
+   - Clean PGN files
+   - Verify move timestamps
+   - Check game completeness
+
+2. **Analysis Tuning**
+   - Adjust frequency thresholds
+   - Calibrate timing categories
+   - Fine-tune pattern matching
+
+3. **Performance Optimization**
+   - Index common positions
+   - Cache frequent patterns
+   - Optimize query paths
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new features
+4. Submit a pull request
+
+## License
+
+MIT License - See LICENSE file for details
