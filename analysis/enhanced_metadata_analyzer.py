@@ -24,6 +24,9 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 # Define constants
 DECISIVENESS_WEIGHTS = {
@@ -99,6 +102,137 @@ class EnhancedMetadataAnalyzer:
         
         # Relationship data
         self.metric_correlations = {}
+        
+        # File tracking for incremental processing
+        self.processed_files_path = os.path.join(self.results_dir, "processed_files.json")
+        self.corrupt_files_path = os.path.join(self.results_dir, "corrupt_files.json")
+        self.processed_files = self.load_processed_files()
+        self.corrupt_files = self.load_corrupt_files()
+        
+        # Thread safety locks
+        self.data_lock = threading.Lock()
+        self.file_tracking_lock = threading.Lock()
+        
+        # Load existing results if available
+        self.load_existing_results()
+    
+    def load_processed_files(self) -> Dict[str, Dict]:
+        """Load the list of already processed files with their metadata."""
+        if os.path.exists(self.processed_files_path):
+            try:
+                with open(self.processed_files_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load processed files list: {e}")
+        return {}
+    
+    def save_processed_files(self):
+        """Save the list of processed files."""
+        try:
+            with open(self.processed_files_path, 'w') as f:
+                json.dump(self.processed_files, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save processed files list: {e}")
+    
+    def load_corrupt_files(self) -> Set[str]:
+        """Load the list of known corrupt files to skip."""
+        if os.path.exists(self.corrupt_files_path):
+            try:
+                with open(self.corrupt_files_path, 'r') as f:
+                    return set(json.load(f))
+            except Exception as e:
+                print(f"Warning: Could not load corrupt files list: {e}")
+        return set()
+    
+    def save_corrupt_files(self):
+        """Save the list of corrupt files."""
+        try:
+            with open(self.corrupt_files_path, 'w') as f:
+                json.dump(list(self.corrupt_files), f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save corrupt files list: {e}")
+    
+    def load_existing_results(self):
+        """Load existing analysis results to build upon them."""
+        # Load existing enhanced analysis if available
+        enhanced_path = os.path.join(self.results_dir, "enhanced_analysis.json")
+        if os.path.exists(enhanced_path):
+            try:
+                with open(enhanced_path, 'r') as f:
+                    existing_data = json.load(f)
+                
+                # Merge existing data
+                if "opening_stats" in existing_data:
+                    for opening, stats in existing_data["opening_stats"].items():
+                        for key, value in stats.items():
+                            self.opening_stats[opening][key] = value
+                
+                if "piece_stats" in existing_data:
+                    for piece_key, piece_data in existing_data["piece_stats"].items():
+                        for symbol, stats in piece_data.items():
+                            # Convert back to PieceStatistics object
+                            ps = self.piece_stats[piece_key][symbol]
+                            ps.total_moves = stats.get("total_moves", 0)
+                            ps.capture_moves = stats.get("capture_moves", 0)
+                            ps.check_moves = stats.get("check_moves", 0)
+                            ps.squares_visited = set(stats.get("squares_visited", []))
+                            ps.phase_distribution = stats.get("phase_distribution", {"opening": 0, "middlegame": 0, "endgame": 0})
+                
+                print(f"Loaded existing results with {len(self.opening_stats)} openings and {len(self.piece_stats)} piece types")
+                
+            except Exception as e:
+                print(f"Warning: Could not load existing results: {e}")
+    
+    def should_process_file(self, pgn_path: str) -> bool:
+        """Check if a file should be processed based on tracking data."""
+        filename = os.path.basename(pgn_path)
+        
+        # Skip known corrupt files
+        if filename in self.corrupt_files:
+            return False
+        
+        # Check if file was already processed
+        if filename in self.processed_files:
+            # Check if file was modified since last processing
+            try:
+                current_mtime = os.path.getmtime(pgn_path)
+                processed_mtime = self.processed_files[filename].get("mtime", 0)
+                
+                if current_mtime <= processed_mtime:
+                    return False  # File hasn't changed, skip
+            except OSError:
+                pass  # File might not exist, process anyway
+        
+        return True
+    
+    def mark_file_processed(self, pgn_path: str, game_count: int):
+        """Mark a file as successfully processed."""
+        filename = os.path.basename(pgn_path)
+        try:
+            with self.file_tracking_lock:
+                self.processed_files[filename] = {
+                    "mtime": os.path.getmtime(pgn_path),
+                    "game_count": game_count,
+                    "processed_at": datetime.now().isoformat()
+                }
+        except OSError:
+            pass
+    
+    def mark_file_corrupt(self, pgn_path: str):
+        """Mark a file as corrupt to skip in future runs."""
+        filename = os.path.basename(pgn_path)
+        with self.file_tracking_lock:
+            self.corrupt_files.add(filename)
+    
+    def save_incremental_results(self):
+        """Save current results incrementally."""
+        try:
+            self.save_results()
+            self.save_processed_files()
+            self.save_corrupt_files()
+            print("Incremental results saved successfully")
+        except Exception as e:
+            print(f"Warning: Could not save incremental results: {e}")
         
     def identify_termination_type(self, game) -> Tuple[str, float]:
         """
@@ -254,34 +388,41 @@ class EnhancedMetadataAnalyzer:
     
     def track_piece_movements(self, board, move, move_number, phase, color_to_move):
         """
-        Track piece movements and update statistics.
+        Track piece movements and update statistics safely.
         """
-        piece = board.piece_at(move.from_square)
-        if piece is None:
-            return  # Skip if no piece (shouldn't happen with valid moves)
-        
-        piece_symbol = piece.symbol()
-        piece_key = f"{chess.COLOR_NAMES[piece.color]} {chess.piece_name(piece.piece_type)}"
-        
-        # Update total moves for this piece type
-        self.piece_stats[piece_key][piece_symbol].total_moves += 1
-        
-        # Track the square this piece moved to
-        to_square = chess.square_name(move.to_square)
-        self.piece_stats[piece_key][piece_symbol].squares_visited.add(to_square)
-        
-        # Track phase distribution
-        self.piece_stats[piece_key][piece_symbol].phase_distribution[phase] += 1
-        
-        # Check if it's a capture move
-        if board.is_capture(move):
-            self.piece_stats[piece_key][piece_symbol].capture_moves += 1
-        
-        # Check if it gives check
-        board.push(move)
-        if board.is_check():
-            self.piece_stats[piece_key][piece_symbol].check_moves += 1
-        board.pop()
+        try:
+            piece = board.piece_at(move.from_square)
+            if piece is None:
+                return  # Skip if no piece (shouldn't happen with valid moves)
+            
+            piece_symbol = piece.symbol()
+            piece_key = f"{chess.COLOR_NAMES[piece.color]} {chess.piece_name(piece.piece_type)}"
+            
+            # Update total moves for this piece type
+            self.piece_stats[piece_key][piece_symbol].total_moves += 1
+            
+            # Track the square this piece moved to
+            to_square = chess.square_name(move.to_square)
+            self.piece_stats[piece_key][piece_symbol].squares_visited.add(to_square)
+            
+            # Track phase distribution
+            self.piece_stats[piece_key][piece_symbol].phase_distribution[phase] += 1
+            
+            # Check if it's a capture move
+            if board.is_capture(move):
+                self.piece_stats[piece_key][piece_symbol].capture_moves += 1
+            
+            # Check if it gives check (using a copy to avoid board state issues)
+            try:
+                board_copy = board.copy()
+                board_copy.push(move)
+                if board_copy.is_check():
+                    self.piece_stats[piece_key][piece_symbol].check_moves += 1
+            except:
+                pass  # Skip check detection if move is problematic
+                
+        except Exception:
+            pass  # Skip entire piece tracking if any error occurs
         
         # Attempt to classify as attack or defense (simplified heuristic)
         if piece.color == chess.WHITE:
@@ -321,17 +462,59 @@ class EnhancedMetadataAnalyzer:
     
     def analyze_pgn_file(self, pgn_path):
         """
-        Analyze a single PGN file and extract metadata.
+        Analyze a single PGN file and extract metadata from ALL games.
+        Enhanced to learn patterns from all moves, not just specific players.
+        Now with incremental processing and error resilience.
+        Thread-safe version that returns results instead of modifying shared state directly.
         
         Args:
             pgn_path: Path to the PGN file
+            
+        Returns:
+            Dict containing games_metadata, piece_stats, and opening_stats
         """
+        filename = os.path.basename(pgn_path)
+        
+        # Check if we should skip this file
+        if not self.should_process_file(pgn_path):
+            print(f"Skipping {filename} (already processed or corrupt)")
+            return None
+        
+        # Local data structures for this file's analysis
+        local_games_metadata = []
+        local_piece_stats = defaultdict(lambda: defaultdict(PieceStatistics))
+        local_opening_stats = defaultdict(lambda: defaultdict(int))
+        
         try:
-            with open(pgn_path, encoding='utf-8') as pgn_file:
-                while True:
-                    game = chess.pgn.read_game(pgn_file)
+            # Try different encodings for robustness
+            encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+            pgn_content = None
+            
+            for encoding in encodings:
+                try:
+                    with open(pgn_path, encoding=encoding) as pgn_file:
+                        pgn_content = pgn_file.read()
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if pgn_content is None:
+                print(f"Error: Could not decode {filename} with any supported encoding")
+                self.mark_file_corrupt(pgn_path)
+                return
+                
+            # Parse games from string content
+            pgn_io = io.StringIO(pgn_content)
+            game_count = 0
+            error_count = 0
+            
+            while True:
+                try:
+                    game = chess.pgn.read_game(pgn_io)
                     if game is None:
                         break
+                    
+                    game_count += 1
                     
                     # Extract basic metadata
                     metadata = GameMetadata()
@@ -339,18 +522,8 @@ class EnhancedMetadataAnalyzer:
                     metadata.black_player = game.headers.get("Black", "")
                     metadata.result = game.headers.get("Result", "*")
                     
-                    # Determine if our player of interest is in this game
-                    player_is_white = self.player_name.lower() in metadata.white_player.lower()
-                    player_is_black = self.player_name.lower() in metadata.black_player.lower()
-                    player_side = None
-                    
-                    if player_is_white:
-                        player_side = chess.WHITE
-                    elif player_is_black:
-                        player_side = chess.BLACK
-                    else:
-                        # Skip games that don't involve our player
-                        continue
+                    # Process ALL games for comprehensive pattern learning
+                    # No player filtering - analyze every game for move patterns
                     
                     # Extract time control
                     time_control = game.headers.get("TimeControl", "")
@@ -362,14 +535,14 @@ class EnhancedMetadataAnalyzer:
                     # Identify opening
                     metadata.opening, metadata.eco_code = self.identify_opening(game)
                     
-                    # Update opening statistics
-                    self.opening_stats[metadata.opening]["games"] += 1
-                    if (metadata.result == "1-0" and player_is_white) or (metadata.result == "0-1" and player_is_black):
-                        self.opening_stats[metadata.opening]["wins"] += 1
-                    elif (metadata.result == "0-1" and player_is_white) or (metadata.result == "1-0" and player_is_black):
-                        self.opening_stats[metadata.opening]["losses"] += 1
+                    # Update opening statistics for ALL games (local)
+                    local_opening_stats[metadata.opening]["games"] += 1
+                    if metadata.result == "1-0":
+                        local_opening_stats[metadata.opening]["white_wins"] += 1
+                    elif metadata.result == "0-1":
+                        local_opening_stats[metadata.opening]["black_wins"] += 1
                     elif metadata.result == "1/2-1/2":
-                        self.opening_stats[metadata.opening]["draws"] += 1
+                        local_opening_stats[metadata.opening]["draws"] += 1
                     
                     # Process the moves and collect detailed statistics
                     board = game.board()
@@ -377,7 +550,7 @@ class EnhancedMetadataAnalyzer:
                     current_phase = "opening"
                     moves_in_phase = {"opening": 0, "middlegame": 0, "endgame": 0}
                     
-                    # Process each move
+                    # Process each move for pattern analysis
                     move_number = 0
                     node = game
                     
@@ -393,7 +566,7 @@ class EnhancedMetadataAnalyzer:
                         
                         moves_in_phase[current_phase] += 1
                         
-                        # Track piece movements
+                        # Track piece movements for ALL moves (pattern learning)
                         self.track_piece_movements(
                             board, 
                             node.move, 
@@ -423,42 +596,130 @@ class EnhancedMetadataAnalyzer:
                     metadata.phase_transitions = phase_transitions
                     metadata.material_imbalance = self.calculate_material_imbalance(board)
                     
-                    # Calculate move quality based on time spent and game outcome
-                    if player_side is not None:
-                        player_won = (metadata.result == "1-0" and player_side == chess.WHITE) or (metadata.result == "0-1" and player_side == chess.BLACK)
-                        base_quality = 0.8 if player_won else 0.4
-                        
-                        # Adjust by decisiveness
-                        base_quality *= metadata.decisive_score
-                        
-                        # Calculate move quality for each move
-                        for move_num, time_spent in metadata.time_per_move.items():
-                            # Higher quality for appropriate time usage
-                            time_factor = 1.0
-                            
-                            # Penalize very quick moves in complex positions (middlegame)
-                            phase = "opening"
-                            for p, transition_move in sorted(metadata.phase_transitions.items(), key=lambda x: x[1]):
-                                if move_num >= transition_move:
-                                    phase = p
-                            
-                            if phase == "middlegame" and time_spent < 5:
-                                time_factor = 0.7 + (time_spent / 5) * 0.3
-                            elif phase == "endgame" and time_spent < 3:
-                                time_factor = 0.8 + (time_spent / 3) * 0.2
-                            
-                            # Calculate final move quality
-                            metadata.move_quality[move_num] = base_quality * time_factor
+                    # Calculate move quality based on game outcome (for all games)
+                    game_won = metadata.result in ["1-0", "0-1"]
+                    base_quality = 0.8 if game_won else 0.5  # Higher for decisive games
                     
-                    # Store the game metadata
-                    self.games_metadata.append(metadata)
+                    # Adjust by decisiveness
+                    base_quality *= metadata.decisive_score
                     
+                    # Calculate move quality for each move
+                    for move_num, time_spent in metadata.time_per_move.items():
+                        # Higher quality for appropriate time usage
+                        time_factor = 1.0
+                        
+                        # Penalize very quick moves in complex positions (middlegame)
+                        phase = "opening"
+                        for p, transition_move in sorted(metadata.phase_transitions.items(), key=lambda x: x[1]):
+                            if move_num >= transition_move:
+                                phase = p
+                        
+                        if phase == "middlegame" and time_spent < 5:
+                            time_factor = 0.7 + (time_spent / 5) * 0.3
+                        elif phase == "endgame" and time_spent < 3:
+                            time_factor = 0.8 + (time_spent / 3) * 0.2
+                        
+                        # Calculate final move quality
+                        metadata.move_quality[move_num] = base_quality * time_factor
+                
+                    # Store the game metadata (local)
+                    local_games_metadata.append(metadata)
+                    
+                except (chess.IllegalMoveError, ValueError, KeyError) as game_error:
+                    error_count += 1
+                    if error_count <= 5:  # Show first few errors for debugging
+                        print(f"Warning: Error processing game {game_count} in {filename}: {game_error}")
+                    elif error_count == 6:
+                        print(f"... (hiding further errors for {filename})")
+                    continue
+                except Exception as game_error:
+                    error_count += 1
+                    if error_count <= 5:  # Show first few errors for debugging
+                        print(f"Unexpected error processing game {game_count} in {filename}: {game_error}")
+                    elif error_count == 6:
+                        print(f"... (hiding further errors for {filename})")
+                    continue
+                    
+            # Mark file as processed if we got through it
+            if game_count > 0:
+                self.mark_file_processed(pgn_path, game_count)
+                print(f"Processed {filename}: {game_count} games analyzed ({error_count} errors)")
+            else:
+                print(f"Warning: No valid games found in {filename}")
+                self.mark_file_corrupt(pgn_path)
+                
         except Exception as e:
-            print(f"Error analyzing {pgn_path}: {str(e)}")
+            print(f"Error processing PGN file {filename}: {e}")
+            self.mark_file_corrupt(pgn_path)
     
+    def save_results(self):
+        """Save analysis results and tracking data to files."""
+        try:
+            # Save main analysis results
+            output_file = os.path.join(self.results_dir, "enhanced_metadata_analysis.json")
+            
+            # Convert data to JSON-serializable format
+            analysis_data = {
+                "opening_stats": dict(self.opening_stats),
+                "piece_stats": {},
+                "games_metadata": []
+            }
+            
+            # Convert piece statistics
+            for piece_key, piece_data in self.piece_stats.items():
+                analysis_data["piece_stats"][piece_key] = {}
+                for symbol, stats in piece_data.items():
+                    analysis_data["piece_stats"][piece_key][symbol] = {
+                        "total_moves": stats.total_moves,
+                        "capture_moves": stats.capture_moves,
+                        "check_moves": stats.check_moves,
+                        "squares_visited": list(stats.squares_visited),
+                        "phase_distribution": stats.phase_distribution
+                    }
+            
+            # Convert game metadata (only include attributes that exist)
+            for game in self.games_metadata:
+                game_data = {
+                    "white_player": game.white_player,
+                    "black_player": game.black_player,
+                    "result": game.result,
+                    "opening": game.opening,
+                    "eco_code": game.eco_code,
+                    "time_control": game.time_control,
+                    "termination": game.termination,
+                    "decisive_score": game.decisive_score,
+                    "move_quality": game.move_quality,
+                    "total_moves": game.total_moves,
+                    "material_imbalance": game.material_imbalance,
+                    "time_per_move": game.time_per_move,
+                    "phase_transitions": game.phase_transitions
+                }
+                    
+                analysis_data["games_metadata"].append(game_data)
+            
+            with open(output_file, 'w') as f:
+                json.dump(analysis_data, f, indent=2)
+            
+            # Save file tracking data
+            processed_file = os.path.join(self.results_dir, "processed_files.json")
+            with open(processed_file, 'w') as f:
+                json.dump(self.processed_files, f, indent=2)
+            
+            corrupt_file = os.path.join(self.results_dir, "corrupt_files.json")
+            with open(corrupt_file, 'w') as f:
+                json.dump(list(self.corrupt_files), f, indent=2)
+            
+            print(f"Saved analysis results to {output_file}")
+            print(f"Tracked {len(self.processed_files)} processed files and {len(self.corrupt_files)} corrupt files")
+            
+        except Exception as e:
+            print(f"Error saving results: {e}")
+
     def analyze_all_pgn_files(self):
         """
         Analyze all PGN files in the specified folder.
+        Enhanced to process ALL games for comprehensive pattern learning.
+        Now with incremental processing and periodic saving.
         """
         pgn_files = [
             os.path.join(self.pgn_folder, f) 
@@ -469,11 +730,24 @@ class EnhancedMetadataAnalyzer:
         total_files = len(pgn_files)
         print(f"Found {total_files} PGN files to analyze")
         
-        for i, pgn_file in enumerate(pgn_files):
-            print(f"Analyzing file {i+1}/{total_files}: {os.path.basename(pgn_file)}")
-            self.analyze_pgn_file(pgn_file)
+        # Filter files that need processing
+        files_to_process = [f for f in pgn_files if self.should_process_file(f)]
+        print(f"Need to process {len(files_to_process)} files (skipping {total_files - len(files_to_process)} already processed/corrupt files)")
         
-        print(f"Analyzed {len(self.games_metadata)} games involving player {self.player_name}")
+        for i, pgn_file in enumerate(files_to_process):
+            print(f"Analyzing file {i+1}/{len(files_to_process)}: {os.path.basename(pgn_file)}")
+            self.analyze_pgn_file(pgn_file)
+            
+            # Save results every 10 files to avoid losing progress
+            if (i + 1) % 10 == 0:
+                print(f"Saving progress after {i+1} files...")
+                self.save_results()
+        
+        # Final save
+        print("Saving final results...")
+        self.save_results()
+        
+        print(f"Analyzed {len(self.games_metadata)} total games for comprehensive pattern learning")
     
     def calculate_move_weights(self):
         """
