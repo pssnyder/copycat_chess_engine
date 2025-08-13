@@ -1,0 +1,52 @@
+{
+  "1001_winning_chess_sacrifices_&_combinations.pgn": {
+    "mtime": 1751312893.780943,
+    "game_count": 1001,
+    "processed_at": "2025-08-12T21:27:28.502348"
+  },
+  "100_golden_games.pgn": {
+    "mtime": 1751312877.8384829,
+    "game_count": 100,
+    "processed_at": "2025-08-12T21:27:29.208402"
+  },
+  "Alekhine2Nc3-d5.pgn": {
+    "mtime": 1736520086.0,
+    "game_count": 7484,
+    "processed_at": "2025-08-12T21:28:33.524670"
+  },
+  "AlekhineExchange.pgn": {
+    "mtime": 1736520116.0,
+    "game_count": 9419,
+    "processed_at": "2025-08-12T21:30:06.468440"
+  },
+  "AlekhineModern.pgn": {
+    "mtime": 1736520156.0,
+    "game_count": 17081,
+    "processed_at": "2025-08-12T21:32:48.589709"
+  },
+  "art_of_chess_analysis.pgn": {
+    "mtime": 1751312877.8374531,
+    "game_count": 24,
+    "processed_at": "2025-08-12T21:32:48.864072"
+  },
+  "art_of_positional_play.pgn": {
+    "mtime": 1751312894.021626,
+    "game_count": 60,
+    "processed_at": "2025-08-12T21:32:49.672555"
+  },
+  "BenkoGambit.pgn": {
+    "mtime": 1736520320.0,
+    "game_count": 67395,
+    "processed_at": "2025-08-12T21:42:56.347894"
+  },
+  "Bogo4Bd2.pgn": {
+    "mtime": 1736520490.0,
+    "game_count": 21376,
+    "processed_at": "2025-08-12T21:46:11.922308"
+  },
+  "Bogo4Nbd2.pgn": {
+    "mtime": 1736520518.0,
+    "game_count": 12471,
+    "processed_at": "2025-08-12T21:48:06.171237"
+  }
+}
